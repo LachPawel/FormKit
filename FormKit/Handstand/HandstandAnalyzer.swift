@@ -64,12 +64,12 @@ struct HandstandAlignment {
 
 struct HandstandAnalyzer {
     /// Tight tolerance — segments within this are GREEN (good form).
-    var goodTolerance: Double  = 22.0
+    var goodTolerance: Double  = 28.0
     /// Loose tolerance — segments within this are YELLOW (close enough, minor tweak needed).
-    var closeTolerance: Double = 38.0
+    var closeTolerance: Double = 50.0
     /// Max degrees the elbow may deviate from 180° for a green rating.
-    var elbowGoodTolerance: Double  = 25.0
-    var elbowCloseTolerance: Double = 40.0
+    var elbowGoodTolerance: Double  = 32.0
+    var elbowCloseTolerance: Double = 52.0
     /// Minimum Vision confidence for a joint to be used.
     var minConfidence: Float = 0.30
 

@@ -18,6 +18,7 @@ struct HandstandView: View {
     @StateObject private var poseEstimator: HandstandPoseEstimator
     @StateObject private var cameraViewModel: CameraViewModel
     @StateObject private var beepHolder = BeepHolder()
+    @StateObject private var easterEgg = EasterEggController()
 
     init() {
         let estimator = HandstandPoseEstimator()
@@ -51,6 +52,11 @@ struct HandstandView: View {
                     .padding(.bottom, 48)
             }
         }
+        // ── Easter egg overlay (outside GeometryReader so it's truly fullscreen) ──
+        .overlay {
+            MichaelEasterEggOverlay(controller: easterEgg)
+                .animation(.spring(duration: 0.35), value: easterEgg.isShowing)
+        }
         .onAppear {
             // Start directly on the back camera — phone sits to the side facing you
             cameraViewModel.setupSession(startingCamera: .back)
@@ -68,6 +74,7 @@ struct HandstandView: View {
         .onReceive(poseEstimator.$alignment) { alignment in
             let shouldBeep = !alignment.isNearlyAligned
             beepHolder.controller.update(isAligned: !shouldBeep)
+            easterEgg.considerShowing(alignment: alignment)
         }
     }
 
