@@ -6,7 +6,7 @@ FormKit wires together Apple's **Vision framework**, **AVFoundation**, and **Swi
 
 ---
 
-## ✨ Features
+## Features
 
 | Feature | Details |
 |---|---|
@@ -20,29 +20,11 @@ FormKit wires together Apple's **Vision framework**, **AVFoundation**, and **Swi
 
 ---
 
-## 📸 Demo
+## Demo
 
 > Real-time pose skeleton rendered over the front camera feed.
 
-```
-┌───────────────────────┐
-│  Joints: 15  FPS: 30  │
-│  nose  x=0.51 y=0.82  │
-│  neck  x=0.50 y=0.68  │
-│  ...                  │
-└───────────────────────┘
-         ●           ← nose
-         │
-    ●────●────●     ← shoulders
-         │
-    ●────●────●     ← elbows / wrists
-         │
-    ●────●────●     ← hips
-         │  │
-         ●  ●       ← knees
-         │  │
-         ●  ●       ← ankles
-```
+WIll be added later.
 
 ---
 
@@ -115,7 +97,7 @@ Select your device in Xcode and press **⌘R**.
 
 ---
 
-## 🧩 Adding Your Own Exercise
+## Adding Your Own Exercise
 
 All exercise intelligence lives in one place: **`ExerciseRepCounter.swift`**.
 
@@ -177,7 +159,7 @@ That's it. `repCounter.currentReps` and `repCounter.currentPhase` are already `@
 
 ---
 
-## 🔑 Key Components
+## Key Components
 
 ### `PoseEstimator`
 
@@ -226,25 +208,7 @@ A value type (`struct`) is preferred so phase state is contained inside the rule
 
 Apple Vision provides 19 named joints. FormKit uses the following subset:
 
-```
-             nose (●)
-              │
-             neck (●)
-            /    \
-   leftShoulder  rightShoulder
-        |               |
-   leftElbow       rightElbow
-        |               |
-   leftWrist       rightWrist
-
-            root (●)
-            /    \
-    leftHip      rightHip
-        |               |
-   leftKnee       rightKnee
-        |               |
-   leftAnkle     rightAnkle
-```
+<img width="568" height="493" alt="Screenshot 2026-03-08 at 09 53 34" src="https://github.com/user-attachments/assets/182c5edd-01eb-482b-b31b-c99e7801fcf7" />
 
 All joint names match `HumanBodyPoseObservation.PoseJointName` from the Vision framework.
 
@@ -273,7 +237,7 @@ No camera data is stored or transmitted. All inference runs **on-device** using 
 
 ## 📄 License
 
-MIT © Pawel Kowalewski — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE) for details.
 
 ---
 
@@ -281,4 +245,4 @@ MIT © Pawel Kowalewski — see [LICENSE](LICENSE) for details.
 
 - [Apple Vision Framework](https://developer.apple.com/documentation/vision) — on-device human body pose detection
 - [Apple AVFoundation](https://developer.apple.com/documentation/avfoundation) — camera capture pipeline
-- [SwiftUI](https://developer.apple.com/xcode/swiftui/) — declarative UI and reactive state management
+- [Detecting Human Body Poses in Images]([https://developer.apple.com/xcode/swiftui/](https://developer.apple.com/documentation/vision/detecting-human-body-poses-in-images)) — the capability to detect human body poses to your app using the Vision framework.
