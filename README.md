@@ -2,29 +2,56 @@
 
 > **A minimal, production-ready iOS bootstrap for building vision-based fitness apps.**
 
+---
+
+## ⚠️ USE AT YOUR OWN RISK
+
+> **IMPORTANT — READ BEFORE USE**
+>
+> FormKit is an **experimental developer tool**. The pose-detection feedback it provides is based on computer-vision estimates and is **not a substitute for professional coaching, medical advice, or physiotherapy guidance**.
+>
+> - **Handstands and inverted exercises carry a real risk of serious injury**, including falls, wrist fractures, neck injuries, and more.
+> - **Never attempt a handstand without a qualified spotter and adequate prior training.**
+> - The alignment feedback (green / yellow / red skeleton) is approximate. A green skeleton does **not** mean your form is safe or correct — it only means the pose landmarks are within a programmatic tolerance.
+> - The authors and contributors of FormKit **accept no liability** for any injury, loss, or damage arising from use of this software.
+>
+> **By using FormKit you acknowledge that you do so entirely at your own risk.**
+
+---
+
 FormKit wires together Apple's **Vision framework**, **AVFoundation**, and **SwiftUI** so you can go from zero to a working real-time pose-detection app in minutes — without boilerplate. Clone it, drop in your exercise logic, and ship.
 
 ---
 
-## Features
+## ✨ Features
 
 | Feature | Details |
 |---|---|
-| 📷 **Live camera feed** | Front/back switchable `AVCaptureSession` with portrait orientation and mirroring |
+| 📷 **Live camera feed** | Front/back switchable `AVCaptureSession`, zoom controls, portrait orientation |
 | 🦴 **Real-time skeleton overlay** | Glowing stick-figure drawn on top of the camera preview using SwiftUI `Path` |
 | 🤸 **Human body pose detection** | Apple Vision `DetectHumanBodyPoseRequest` — 15 joints tracked at up to 30 fps |
+| 🟢🟡🔴 **Three-level alignment feedback** | Green / yellow / red per body segment with configurable tolerances |
+| 🔔 **Audio alerts** | `AVAudioEngine` beep (bypasses silent switch) when form breaks — with grace period |
 | 🔁 **Rep counter engine** | Protocol-based `ExerciseRule` — implement one method to count any exercise |
+| 🕺 **Easter eggs** | MJ hips easter egg triggers when hips are the sole alignment issue |
 | 📊 **Live debug HUD** | On-screen FPS counter + joint coordinates overlay for rapid iteration |
 | ⚡ **Efficient frame processing** | Processes every 3rd frame, drops late frames, avoids redundant work |
 | 🔒 **Thread-safe architecture** | `@MainActor` isolation for UI, dedicated session & processing queues for capture |
 
 ---
 
-## Demo
+## 📸 Demo
 
-> Real-time pose skeleton rendered over the front camera feed.
+> Real-time pose skeleton rendered over the side camera — green when straight, yellow when close, red when off.
 
-WIll be added later.
+```
+┌───────────────────────┐        ┌─────────────────────┐
+│  Joints: 15  FPS: 30  │        │   STRAIGHT  ✓       │  ← green banner
+│  nose  x=0.51 y=0.82  │        │   ALMOST THERE  ◎   │  ← yellow banner
+│  neck  x=0.50 y=0.68  │        │   FIX POSITION      │  ← red banner
+│  ...                  │        │   Torso tilted 42°   │
+└───────────────────────┘        └─────────────────────┘
+```
 
 ---
 
@@ -33,10 +60,10 @@ WIll be added later.
 ```
 FormKit/
 ├── FormKitApp.swift              # App entry point
-├── ContentView.swift             # Root view → PoseDetectionView
+├── ContentView.swift             # Root view → HandstandView
 │
 ├── Camera/
-│   ├── CameraViewModel.swift     # AVCaptureSession lifecycle, camera switching
+│   ├── CameraViewModel.swift     # AVCaptureSession lifecycle, camera switching, zoom
 │   ├── CameraView.swift          # SwiftUI session-state router (loading/error/running)
 │   ├── CameraPreview.swift       # UIViewRepresentable wrapping AVCaptureVideoPreviewLayer
 │   ├── CameraViewWrapper.swift   # Convenience wrapper (session start/stop on appear)
@@ -45,33 +72,76 @@ FormKit/
 │   ├── CIImage_Extension.swift   # CIImage → CGImage helper
 │   └── CMSampleBuffer_Extension.swift  # CMSampleBuffer → CGImage helper
 │
+├── Handstand/                    # 🤸 Wall handstand trainer feature
+│   ├── HandstandView.swift       # Main screen: camera + skeleton + controls + banner
+│   ├── HandstandPoseEstimator.swift  # Subclass that publishes HandstandAlignment
+│   ├── HandstandAnalyzer.swift   # Alignment engine: 4 vertical segments + 3 extra checks
+│   ├── HandstandSkeletonView.swift   # Per-segment green/yellow/red skeleton overlay
+│   ├── BeepController.swift      # AVAudioEngine beep — plays through silent switch
+│   ├── MichaelEasterEgg.swift    # 🕺 Easter egg: MJ hips video when hips are off
+│   └── MichaelHips.mp4           # The clip itself
+│
 ├── Skeleton/
 │   ├── FreePostureStickFigureView.swift  # SwiftUI skeleton overlay (bones + joints)
 │   └── Stick.swift               # Generic polyline Shape (coordinate flip helper)
 │
 └── Views/
-    └── PoseDetectionView.swift   # Main screen: camera + skeleton + debug HUD
+    └── PoseDetectionView.swift   # Debug screen: camera + skeleton + coordinate HUD
 ```
 
 ### Data flow
 
 ```
-AVCaptureSession
+AVCaptureSession  (back camera, side profile view)
     │  (sample buffer, every 3rd frame)
     ▼
-PoseEstimator          ← nonisolated AVCaptureVideoDataOutputSampleBufferDelegate
+HandstandPoseEstimator     ← nonisolated AVCaptureVideoDataOutputSampleBufferDelegate
     │  DetectHumanBodyPoseRequest (Vision)
     │  publishes bodyParts [@MainActor]
+    │  pipes through HandstandAnalyzer
+    │  publishes alignment: HandstandAlignment
     ▼
-ExerciseRepCounter     ← called via $bodyParts Combine subscription
-    │  ExerciseRule.evaluate(joints:)
-    │  publishes currentReps, currentPhase
+HandstandAlignment
+    ├── segments[]          per-segment AlignmentQuality (.good / .close / .bad)
+    ├── isFullyAligned      all segments .good  → green
+    ├── isNearlyAligned     no segment .bad     → yellow
+    └── feedbackMessage     human-readable hint
     ▼
-PoseDetectionView      ← @StateObject, redraws on each publish
-    ├── CameraView          (live preview)
-    ├── FreePostureStickFigureView  (skeleton)
-    └── debugOverlay        (HUD)
+HandstandView  ← @StateObject, redraws on each publish
+    ├── CameraView                  (live preview)
+    ├── HandstandSkeletonView       (green/yellow/red bones)
+    ├── statusBanner                (STRAIGHT / ALMOST THERE / FIX POSITION)
+    ├── BeepController              (beeps when isNearlyAligned is false)
+    └── EasterEggController         (MJ video when hips are the sole issue for 2 s)
 ```
+
+---
+
+## 🤸 Wall Handstand Trainer
+
+The built-in app is a wall handstand alignment trainer. Place your phone to your **left or right** side in portrait orientation, kick up, and the skeleton turns green when you're straight.
+
+### Setup
+1. Place the phone on the floor **to your side**, propped up in portrait so the lens faces you
+2. Use the **−** zoom button to zoom out until your full body fits in frame
+3. Kick up into your handstand
+4. The banner at the **bottom of the screen** (nearest your head) tells you your status
+
+### Checks performed
+| Check | What it measures |
+|---|---|
+| **Arms** | Wrist → shoulder line is vertical (±28° green, ±50° yellow) |
+| **Torso** | Shoulder → hip line is vertical |
+| **Thighs** | Hip → knee line is vertical |
+| **Shins** | Knee → ankle line is vertical |
+| **HeadDown** | Nose is below hips — confirms you're actually inverted |
+| **ArmsStraight** | Elbow angle ≈ 180° — arms locked out |
+| **WristsBelowHead** | Hands on floor, below your head |
+
+### Easter egg 🕺
+If your hips are the **only** thing stopping a perfect handstand, and you hold that position for 2 seconds, Michael Jackson will appear upside-down to show you how it's done. There is a 5-second cooldown between appearances.
+
+> ⚠️ Seriously though — **use at your own risk**. A green skeleton is not a safety certificate.
 
 ---
 
@@ -86,7 +156,7 @@ PoseDetectionView      ← @StateObject, redraws on each publish
 ### Clone & run
 
 ```bash
-git clone https://github.com/LachPawel/FormKit.git
+git clone https://github.com/your-username/FormKit.git
 cd FormKit
 open FormKit.xcodeproj
 ```
@@ -97,7 +167,7 @@ Select your device in Xcode and press **⌘R**.
 
 ---
 
-## Adding Your Own Exercise
+## 🧩 Adding Your Own Exercise
 
 All exercise intelligence lives in one place: **`ExerciseRepCounter.swift`**.
 
@@ -155,94 +225,18 @@ In **`PoseDetectionView.swift`** (or wherever you initialise `PoseEstimator`), p
 repCounter = ExerciseRepCounter(rule: BicepCurlRule())
 ```
 
-That's it. `repCounter.currentReps` and `repCounter.currentPhase` are already `@Published` and available in every view that observes `PoseEstimator`.
-
 ---
 
-## Key Components
+## 🔑 Key Components
+
+### `HandstandAnalyzer`
+Pure value-type alignment engine. Takes a joints dictionary, returns a `HandstandAlignment` with per-segment `AlignmentQuality` (`.good` / `.close` / `.bad`). Tolerances are configurable properties — tweak `goodTolerance` and `closeTolerance` to suit your skill level.
 
 ### `PoseEstimator`
-
-```
-@MainActor class PoseEstimator: ObservableObject
-```
-
-- Conforms to `AVCaptureVideoDataOutputSampleBufferDelegate` via a `nonisolated` extension — safe to call from any queue
-- Processes every 3rd frame to balance accuracy and battery life
-- Calculates live **FPS** using `CACurrentMediaTime`
-- Filters joints by `confidence > 0` before publishing
+`@MainActor` class conforming to `AVCaptureVideoDataOutputSampleBufferDelegate` via a `nonisolated` extension. Processes every 3rd frame, calculates live FPS, filters joints by confidence.
 
 ### `CameraViewModel`
+Manages `AVCaptureSession` on a dedicated serial queue. Supports front ↔ back switching, configurable starting camera, zoom via `setZoom(factor:)`, and disables idle timer while active.
 
-```
-class CameraViewModel: ObservableObject
-```
-
-- Manages `AVCaptureSession` on a dedicated serial `sessionQueue`
-- Supports **front ↔ back camera switching** at runtime via `NotificationCenter` (`.switchCamera`)
-- Disables the **idle timer** while the session is active to prevent screen sleep
-- Exposes `sessionState: CameraSessionState` (`.initializing` / `.running` / `.failed`) for UI feedback
-
-### `FreePostureStickFigureView`
-
-- Draws **bones** as `Path` strokes with a `LinearGradient` and a glow `shadow`
-- Draws **joints** as layered `Circle` shapes (glow + white fill + accent border)
-- Low-confidence joints (`< 0.5`) show a red debug ring
-- Coordinate conversion: Vision's `(0,0)` is bottom-left; the view flips Y to match UIKit
-
-### `ExerciseRule` protocol
-
-```swift
-protocol ExerciseRule {
-    var name: String { get }
-    mutating func evaluate(joints: [...], currentRepCount: Int) -> RepCounterUpdate
-    mutating func reset()
-}
-```
-
-A value type (`struct`) is preferred so phase state is contained inside the rule.
-
----
-
-## 📐 Joint Map
-
-Apple Vision provides 19 named joints. FormKit uses the following subset:
-
-<img width="568" height="493" alt="Screenshot 2026-03-08 at 09 53 34" src="https://github.com/user-attachments/assets/182c5edd-01eb-482b-b31b-c99e7801fcf7" />
-
-All joint names match `HumanBodyPoseObservation.PoseJointName` from the Vision framework.
-
----
-
-## 🛡️ Privacy
-
-Add the following key to your `Info.plist`:
-
-```xml
-<key>NSCameraUsageDescription</key>
-<string>FormKit uses the camera to detect your body pose in real time.</string>
-```
-
-No camera data is stored or transmitted. All inference runs **on-device** using Apple Vision.
-
----
-
-## 🤝 Contributing
-
-1. Fork the repo and create a feature branch: `git checkout -b feature/my-exercise`
-2. Add your `ExerciseRule` implementation (and tests if applicable)
-3. Open a pull request — please include a short screen recording if the change is visual
-
----
-
-## 📄 License
-
-MIT — see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgements
-
-- [Apple Vision Framework](https://developer.apple.com/documentation/vision) — on-device human body pose detection
-- [Apple AVFoundation](https://developer.apple.com/documentation/avfoundation) — camera capture pipeline
-- [Detecting Human Body Poses in Images]([https://developer.apple.com/xcode/swiftui/](https://developer.apple.com/documentation/vision/detecting-human-body-poses-in-images)) — the capability to detect human body poses to your app using the Vision framework.
+### `BeepController`
+Uses `AVAudioEngine` + a synthesised sine-wave buffer — **not** `AudioServicesPlaySystemSound`, which is silenced by the ringer switch. The engine is created lazily on first beep so it never conflicts with `AVCaptureSession`
