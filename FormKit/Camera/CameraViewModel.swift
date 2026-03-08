@@ -111,24 +111,26 @@ class CameraViewModel: ObservableObject {
     }
     
     func setupSession() {
+        // Mark initializing on main thread immediately so UI can react
+        DispatchQueue.main.async { self.sessionState = .initializing }
         sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.configureSession()
-            self.startSession()
+            self?.configureSession()
         }
     }
-    
+
     private func configureSession() {
         guard !isConfigured else { return }
-        sessionState = .initializing
+
         let session = AVCaptureSession()
         session.beginConfiguration()
         session.sessionPreset = .high
+
         guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
             print("Failed to get front camera")
-            sessionState = .failed
+            DispatchQueue.main.async { self.sessionState = .failed }
             return
         }
+
         do {
             let input = try AVCaptureDeviceInput(device: camera)
             if session.canAddInput(input) {
@@ -136,39 +138,52 @@ class CameraViewModel: ObservableObject {
                 currentCameraInput = input
             } else {
                 print("Could not add camera input")
-                sessionState = .failed
+                DispatchQueue.main.async { self.sessionState = .failed }
+                session.commitConfiguration()
                 return
             }
         } catch {
             print("Failed to create camera input: \(error.localizedDescription)")
-            sessionState = .failed
+            DispatchQueue.main.async { self.sessionState = .failed }
+            session.commitConfiguration()
             return
         }
+
         videoOutput.videoSettings = [(kCVPixelBufferPixelFormatTypeKey as String): Int(kCVPixelFormatType_32BGRA)]
         videoOutput.alwaysDiscardsLateVideoFrames = true
-        
-        // Only set delegate if poseEstimator exists
+
         if let poseEstimator = poseEstimator {
             videoOutput.setSampleBufferDelegate(poseEstimator, queue: processingQueue)
         }
-        
+
         if session.canAddOutput(videoOutput) {
             session.addOutput(videoOutput)
         } else {
             print("Could not add video output")
-            sessionState = .failed
+            DispatchQueue.main.async { self.sessionState = .failed }
+            session.commitConfiguration()
             return
         }
+
         if let connection = videoOutput.connection(with: .video) {
             connection.videoOrientation = .portrait
             connection.isVideoMirrored = true
         }
+
         session.commitConfiguration()
+        isConfigured = true
+
+        // Hand fully-configured session to main thread, then start running
         DispatchQueue.main.async {
             self.captureSession = session
-            self.isConfigured = true
             self.sessionState = .running
             self.setupFrameCallback()
+            // Start the session after captureSession is visible to startSession()
+            self.sessionQueue.async {
+                session.startRunning()
+            }
+            UIApplication.shared.isIdleTimerDisabled = true
+            print("🔋 Screen sleep disabled - camera is active")
         }
     }
     
@@ -191,27 +206,19 @@ class CameraViewModel: ObservableObject {
     }
     
     func startSession() {
-        guard let session = captureSession, !session.isRunning else { return }
-        
-        sessionQueue.async {
+        // captureSession is set on main thread after configuration completes.
+        // If it's already running (started inside configureSession), this is a no-op.
+        sessionQueue.async { [weak self] in
+            guard let session = self?.captureSession, !session.isRunning else { return }
             session.startRunning()
         }
-        
-        // Prevent screen from going to sleep when camera is active
-        DispatchQueue.main.async {
-            UIApplication.shared.isIdleTimerDisabled = true
-            print("🔋 Screen sleep disabled - camera is active")
-        }
     }
-    
+
     func stopSession() {
-        guard let session = captureSession, session.isRunning else { return }
-        
-        sessionQueue.async {
+        sessionQueue.async { [weak self] in
+            guard let session = self?.captureSession, session.isRunning else { return }
             session.stopRunning()
         }
-        
-        // Re-enable screen sleep when camera is stopped
         DispatchQueue.main.async {
             UIApplication.shared.isIdleTimerDisabled = false
             print("🔋 Screen sleep re-enabled - camera stopped")

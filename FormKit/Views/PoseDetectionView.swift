@@ -37,6 +37,15 @@ struct PoseDetectionView: View {
         }
     }
 
+    // MARK: - FPS colour indicator
+    private var fpsColor: Color {
+        switch poseEstimator.fps {
+        case 25...: return .green
+        case 15..<25: return .yellow
+        default: return .red
+        }
+    }
+
     // MARK: - Debug overlay
     private var debugOverlay: some View {
         let sorted = poseEstimator.bodyParts
@@ -44,9 +53,14 @@ struct PoseDetectionView: View {
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Joints detected: \(poseEstimator.jointCount)")
-                    .font(.caption.bold())
-                    .foregroundStyle(.green)
+                HStack(spacing: 12) {
+                    Text("Joints: \(poseEstimator.jointCount)")
+                        .font(.caption.bold())
+                        .foregroundStyle(.green)
+                    Text(String(format: "FPS: %.0f", poseEstimator.fps))
+                        .font(.caption.bold())
+                        .foregroundStyle(fpsColor)
+                }
 
                 ForEach(Array(sorted.prefix(14)), id: \.key) { name, joint in
                     Text(
