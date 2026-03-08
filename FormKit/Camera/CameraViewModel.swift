@@ -21,6 +21,7 @@ class CameraViewModel: ObservableObject {
     @Published var currentCameraPosition: AVCaptureDevice.Position = .front
     @Published var sessionState: CameraSessionState = .initializing
     @Published var repCount: Int = 0
+    @Published var zoomFactor: CGFloat = 1.0
     
     private let poseEstimator: PoseEstimator?
     
@@ -36,8 +37,7 @@ class CameraViewModel: ObservableObject {
     init(poseEstimator: PoseEstimator) {
         self.poseEstimator = poseEstimator
         sessionState = .initializing
-        setupSession()
-        
+
         // Listen for camera switch notifications
         NotificationCenter.default.addObserver(
             self,
@@ -110,23 +110,23 @@ class CameraViewModel: ObservableObject {
         session.commitConfiguration()
     }
     
-    func setupSession() {
+    func setupSession(startingCamera: AVCaptureDevice.Position = .front) {
         // Mark initializing on main thread immediately so UI can react
         DispatchQueue.main.async { self.sessionState = .initializing }
         sessionQueue.async { [weak self] in
-            self?.configureSession()
+            self?.configureSession(position: startingCamera)
         }
     }
 
-    private func configureSession() {
+    private func configureSession(position: AVCaptureDevice.Position = .front) {
         guard !isConfigured else { return }
 
         let session = AVCaptureSession()
         session.beginConfiguration()
         session.sessionPreset = .high
 
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
-            print("Failed to get front camera")
+        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
+            print("Failed to get camera for position: \(position)")
             DispatchQueue.main.async { self.sessionState = .failed }
             return
         }
@@ -167,7 +167,7 @@ class CameraViewModel: ObservableObject {
 
         if let connection = videoOutput.connection(with: .video) {
             connection.videoOrientation = .portrait
-            connection.isVideoMirrored = true
+            connection.isVideoMirrored = (position == .front)
         }
 
         session.commitConfiguration()
@@ -176,6 +176,7 @@ class CameraViewModel: ObservableObject {
         // Hand fully-configured session to main thread, then start running
         DispatchQueue.main.async {
             self.captureSession = session
+            self.currentCameraPosition = position
             self.sessionState = .running
             self.setupFrameCallback()
             // Start the session after captureSession is visible to startSession()
@@ -211,6 +212,22 @@ class CameraViewModel: ObservableObject {
         sessionQueue.async { [weak self] in
             guard let session = self?.captureSession, !session.isRunning else { return }
             session.startRunning()
+        }
+    }
+
+    func setZoom(factor: CGFloat) {
+        guard let input = currentCameraInput else { return }
+        let device = input.device
+        let clamped = max(1.0, min(factor, device.activeFormat.videoMaxZoomFactor))
+        sessionQueue.async {
+            do {
+                try device.lockForConfiguration()
+                device.videoZoomFactor = clamped
+                device.unlockForConfiguration()
+                DispatchQueue.main.async { self.zoomFactor = clamped }
+            } catch {
+                print("Zoom error: \(error)")
+            }
         }
     }
 
