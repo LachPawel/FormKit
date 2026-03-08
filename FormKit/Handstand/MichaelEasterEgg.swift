@@ -38,23 +38,43 @@ struct MichaelEasterEgg {
 final class EasterEggController: ObservableObject {
     @Published private(set) var isShowing = false
 
-    private let cooldown: TimeInterval = 5      // seconds between shows
+    private let cooldown: TimeInterval    = 5   // seconds between shows
     private let clipDuration: TimeInterval = 2  // video is ~2 s; hide after this
+    private let dwellRequired: TimeInterval = 2 // must hold hip-off position this long
     private var lastShownAt: Date = .distantPast
     private var hideTimer: Timer?
+    private var dwellTimer: Timer?              // fires after dwell period
 
     func considerShowing(alignment: HandstandAlignment) {
-        guard !isShowing else { return }
-        guard Date().timeIntervalSince(lastShownAt) >= cooldown else { return }
-        guard MichaelEasterEgg.shouldTrigger(alignment: alignment) else { return }
-        show()
+        guard !isShowing else { cancelDwell(); return }
+        guard Date().timeIntervalSince(lastShownAt) >= cooldown else { cancelDwell(); return }
+
+        if MichaelEasterEgg.shouldTrigger(alignment: alignment) {
+            // Start dwell timer only if not already counting
+            if dwellTimer == nil {
+                dwellTimer = Timer.scheduledTimer(withTimeInterval: dwellRequired,
+                                                  repeats: false) { [weak self] _ in
+                    self?.dwellTimer = nil
+                    self?.show()
+                }
+            }
+        } else {
+            // Condition no longer met — cancel any pending dwell
+            cancelDwell()
+        }
+    }
+
+    private func cancelDwell() {
+        dwellTimer?.invalidate()
+        dwellTimer = nil
     }
 
     private func show() {
-        lastShownAt = Date()          // stamp immediately so re-entrant calls are blocked
+        lastShownAt = Date()
         withAnimation(.spring(duration: 0.35)) { isShowing = true }
         hideTimer?.invalidate()
-        hideTimer = Timer.scheduledTimer(withTimeInterval: clipDuration, repeats: false) { [weak self] _ in
+        hideTimer = Timer.scheduledTimer(withTimeInterval: clipDuration,
+                                         repeats: false) { [weak self] _ in
             self?.hide()
         }
     }
@@ -65,8 +85,8 @@ final class EasterEggController: ObservableObject {
     }
 
     private func hide() {
+        cancelDwell()
         withAnimation(.easeOut(duration: 0.25)) { isShowing = false }
-        // Keep lastShownAt as-is so the full cooldown runs from when we first showed
     }
 }
 
@@ -95,6 +115,8 @@ struct MichaelEasterEggOverlay: View {
                     // in its Coordinator and rewinds+plays when isShowing becomes true.
                     SinglePlayVideoPlayer(resourceName: "MichaelHips", fileExtension: "mp4")
                         .frame(width: 260, height: 260)
+                        .rotationEffect(.degrees(180))
+                        .scaleEffect(x: -1, y: 1)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                         .shadow(radius: 16)
 
