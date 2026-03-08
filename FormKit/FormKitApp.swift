@@ -2,7 +2,7 @@
 //  FormKitApp.swift
 //  FormKit
 //
-//  Created by Pawel Kowalewski on 23/12/2025.
+//  Created by Pawel Lach on 23/12/2025.
 //
 
 import SwiftUI
