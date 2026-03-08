@@ -87,7 +87,7 @@ extension PoseEstimator: AVCaptureVideoDataOutputSampleBufferDelegate {
 
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                self.bodyParts = results.first?.allJoints() ?? [:]
+                self.bodyParts = results.first?.allJoints().filter { $0.value.confidence > 0 } ?? [:]
             }
         } catch {
             await MainActor.run { [weak self] in self?.bodyParts = [:] }
